@@ -1,0 +1,34 @@
+version: '3.8'
+
+services:
+  prashiskshan:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - NEXT_PUBLIC_APPWRITE_ENDPOINT=${NEXT_PUBLIC_APPWRITE_ENDPOINT}
+      - NEXT_PUBLIC_APPWRITE_PROJECT_ID=${NEXT_PUBLIC_APPWRITE_PROJECT_ID}
+      - NEXT_PUBLIC_DATABASE_ID=${NEXT_PUBLIC_DATABASE_ID}
+      - NEXT_PUBLIC_USERS_COLLECTION_ID=${NEXT_PUBLIC_USERS_COLLECTION_ID}
+      - NEXT_PUBLIC_INTERNSHIPS_COLLECTION_ID=${NEXT_PUBLIC_INTERNSHIPS_COLLECTION_ID}
+      - NEXT_PUBLIC_APPLICATIONS_COLLECTION_ID=${NEXT_PUBLIC_APPLICATIONS_COLLECTION_ID}
+      - NEXT_PUBLIC_LOGBOOK_COLLECTION_ID=${NEXT_PUBLIC_LOGBOOK_COLLECTION_ID}
+      - NEXT_PUBLIC_REPORTS_COLLECTION_ID=${NEXT_PUBLIC_REPORTS_COLLECTION_ID}
+      - NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID=${NEXT_PUBLIC_NOTIFICATIONS_COLLECTION_ID}
+      - NEXT_PUBLIC_FILES_COLLECTION_ID=${NEXT_PUBLIC_FILES_COLLECTION_ID}
+      - NEXT_PUBLIC_STORAGE_BUCKET_ID=${NEXT_PUBLIC_STORAGE_BUCKET_ID}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - prashiskshan-network
+
+networks:
+  prashiskshan-network:
+    driver: bridge
