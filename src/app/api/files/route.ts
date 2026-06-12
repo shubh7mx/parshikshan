@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { uuid } from '@/lib/d1';
 
+export const runtime = 'edge';
+
 export async function GET(request: NextRequest) {
   const category = request.nextUrl.searchParams.get('category');
 
