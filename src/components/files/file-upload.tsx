@@ -26,7 +26,7 @@ import { FileOperations } from '@/lib/database-operations';
 import { useDropzone } from 'react-dropzone';
 
 interface UploadedFile {
-  $id: string;
+  id: string;
   name: string;
   size: number;
   type: string;
@@ -61,7 +61,7 @@ export function FileUpload({
     setUploading(true);
     
     const newFiles: UploadedFile[] = acceptedFiles.map(file => ({
-      $id: `temp-${Date.now()}-${Math.random()}`,
+      id: `temp-${Date.now()}-${Math.random()}`,
       name: file.name,
       size: file.size,
       type: file.type,
@@ -84,7 +84,7 @@ export function FileUpload({
         for (let progress = 0; progress <= 90; progress += 10) {
           await new Promise(resolve => setTimeout(resolve, 100));
           setFiles(prev => prev.map(f => 
-            f.$id === tempFile.$id ? { ...f, progress } : f
+            f.id === tempFile.id ? { ...f, progress } : f
           ));
         }
 
@@ -93,9 +93,9 @@ export function FileUpload({
         
         if (result.success && result.data) {
           setFiles(prev => prev.map(f => 
-            f.$id === tempFile.$id ? {
+            f.id === tempFile.id ? {
               ...f,
-              $id: result.data!.fileId,
+              id: result.data!.fileId,
               url: result.data!.url,
               status: 'completed',
               progress: 100
@@ -103,13 +103,13 @@ export function FileUpload({
           ));
         } else {
           setFiles(prev => prev.map(f => 
-            f.$id === tempFile.$id ? { ...f, status: 'error' } : f
+            f.id === tempFile.id ? { ...f, status: 'error' } : f
           ));
         }
       } catch (error) {
         console.error('Upload error:', error);
         setFiles(prev => prev.map(f => 
-          f.$id === tempFile.$id ? { ...f, status: 'error' } : f
+          f.id === tempFile.id ? { ...f, status: 'error' } : f
         ));
       }
     }
@@ -135,11 +135,11 @@ export function FileUpload({
 
   const removeFile = async (fileId: string) => {
     try {
-      const fileToRemove = files.find(f => f.$id === fileId);
+      const fileToRemove = files.find(f => f.id === fileId);
       if (fileToRemove && fileToRemove.status === 'completed') {
         await FileOperations.deleteFile(fileId);
       }
-      setFiles(prev => prev.filter(f => f.$id !== fileId));
+      setFiles(prev => prev.filter(f => f.id !== fileId));
     } catch (error) {
       console.error('Error removing file:', error);
     }
@@ -231,7 +231,7 @@ export function FileUpload({
           <CardContent>
             <div className="space-y-4">
               {files.map((file) => (
-                <div key={file.$id} className="flex items-center gap-4 p-4 border rounded-lg">
+                <div key={file.id} className="flex items-center gap-4 p-4 border rounded-lg">
                   <div className="flex-shrink-0">
                     {getFileIcon(file.type)}
                   </div>
@@ -292,7 +292,7 @@ export function FileUpload({
                     <Button
                       variant="outline"
                       
-                      onClick={() => removeFile(file.$id)}
+                      onClick={() => removeFile(file.id)}
                       disabled={file.status === 'uploading'}
                     >
                       <Trash2 className="h-3 w-3" />

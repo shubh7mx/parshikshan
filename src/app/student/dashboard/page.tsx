@@ -32,8 +32,7 @@ import {
   Send
 } from 'lucide-react';
 import { useApp } from '@/components/providers/app-provider';
-import { databases, storage, ID, Query } from '@/lib/appwrite';
-import { dbOperations } from '@/lib/database';
+import { dbOperations, internshipProgramService, internshipApplicationService, internshipService } from '@/lib/database';
 
 interface DashboardStats {
   totalInternships: number;
@@ -43,7 +42,7 @@ interface DashboardStats {
 }
 
 interface InternshipProgram {
-  $id: string;
+  id: string;
   title: string;
   companyName: string;
   location: string;
@@ -98,25 +97,18 @@ export default function StudentDashboard() {
 
   const createDemoData = async () => {
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
-      // Check if demo data already exists
-      const existingPrograms = await databases.listDocuments(
-        DATABASE_ID,
-        'internship_programs',
-        [Query.equal('status', 'published')]
+      const result = await internshipProgramService.list<InternshipProgram>(
+        [{ column: 'status', value: 'published' }]
       );
-      
-      // If demo data exists, just load it
-      if (existingPrograms.documents.length > 0) {
+
+      if (result.success && result.data && result.data.documents.length > 0) {
         console.log('Demo data already exists, loading existing programs...');
         loadDashboardData();
         return;
       }
-      
+
       console.log('Creating demo internship programs...');
-      
-      // Create demo internship programs only if none exist
+
       const demoPrograms = [
         {
           title: 'Frontend Developer Intern',
@@ -174,40 +166,23 @@ export default function StudentDashboard() {
         }
       ];
 
-      // Create demo programs in database
-      let createdCount = 0;
       for (const program of demoPrograms) {
         try {
-          await databases.createDocument(
-            DATABASE_ID,
-            'internship_programs',
-            ID.unique(),
-            program
-          );
-          createdCount++;
-          console.log(`Created demo program: ${program.title}`);
+          await internshipProgramService.create(program as any);
         } catch (error: any) {
-          console.log(`Demo program '${program.title}' may already exist or error occurred:`, error.message);
+          console.log(`Demo program '${program.title}' may already exist:`, error);
         }
       }
-      
-      console.log(`Created ${createdCount} demo programs`);
-      
-      // Load the data (whether newly created or existing)
+
       loadDashboardData();
-      
     } catch (error) {
       console.error('Error in createDemoData:', error);
-      // Even if demo data creation fails, try to load existing data
       loadDashboardData();
     }
   };
 
   const loadDashboardData = async () => {
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
-      // Load student profile
       if (userProfile) {
         setProfile({
           rollNumber: userProfile.rollNumber,
@@ -227,72 +202,60 @@ export default function StudentDashboard() {
           bio: userProfile.bio
         });
       }
-      
-      // Load applications
+
       if (user) {
         try {
-          const applicationsResult = await databases.listDocuments(
-            DATABASE_ID,
-            'internship_applications',
-            [Query.equal('studentId', user.$id)]
-          );
-          setApplications(applicationsResult.documents || []);
+          const applicationsResult = await internshipApplicationService.list<any>([
+            { column: 'student_id', value: user.id }
+          ]);
+          setApplications(applicationsResult.data?.documents || []);
         } catch (error) {
           console.error('Error loading applications:', error);
         }
       }
-      
-      // Load available internship programs
-      const programsResult = await databases.listDocuments(
-        DATABASE_ID,
-        'internship_programs',
-        [Query.equal('status', 'published')]
-      );
-      
-      if (programsResult.documents.length > 0) {
-        const programs = programsResult.documents.map(doc => ({
-          $id: doc.$id,
+
+      const programsResult = await internshipProgramService.list<any>([
+        { column: 'status', value: 'published' }
+      ]);
+
+      if (programsResult.data?.documents.length) {
+        const programs = programsResult.data.documents.map((doc: any) => ({
+          id: doc.id,
           title: doc.title,
           companyName: doc.companyName || 'Company Name',
           location: doc.location,
           mode: doc.mode,
           duration: doc.duration,
           stipend: doc.stipend,
-          requiredSkills: doc.requiredSkills || [],
-          applicationDeadline: doc.applicationDeadline,
+          requiredSkills: typeof doc.required_skills === 'string' ? JSON.parse(doc.required_skills) : (doc.required_skills || []),
+          applicationDeadline: doc.application_deadline,
           description: doc.description,
           status: doc.status
         }));
         setAvailableInternships(programs);
       }
-      
-      // Load active internship (if any)
+
       if (user) {
         try {
-          const internshipsResult = await databases.listDocuments(
-            DATABASE_ID,
-            'internships',
-            [
-              Query.equal('studentId', user.$id),
-              Query.equal('status', 'ongoing')
-            ]
-          );
-          if (internshipsResult.documents.length > 0) {
-            setActiveInternship(internshipsResult.documents[0]);
+          const internshipsResult = await internshipService.list<any>([
+            { column: 'student_id', value: user.id },
+            { column: 'status', value: 'ongoing' }
+          ]);
+          if (internshipsResult.data?.documents.length) {
+            setActiveInternship(internshipsResult.data.documents[0]);
           }
         } catch (error) {
           console.error('Error loading internships:', error);
         }
       }
-      
-      // Calculate stats
+
       setStats({
         totalInternships: applications.length,
-        activeApplications: applications.filter(app => app.status === 'pending').length,
-        completedInternships: applications.filter(app => app.status === 'selected').length,
+        activeApplications: applications.filter((app: any) => app.status === 'pending').length,
+        completedInternships: applications.filter((app: any) => app.status === 'selected').length,
         totalHours: activeInternship?.hoursCompleted || 0
       });
-      
+
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -307,35 +270,23 @@ export default function StudentDashboard() {
     }
     
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
-      // Check if already applied
-      const existingApplication = applications.find(app => app.programId === programId);
+      const existingApplication = applications.find((app: any) => app.program_id === programId);
       if (existingApplication) {
         alert('You have already applied to this internship!');
         return;
       }
-      
-      // Create application
-      await databases.createDocument(
-        DATABASE_ID,
-        'internship_applications',
-        ID.unique(),
-        {
-          studentId: user.$id,
-          programId: programId,
-          applicationDate: new Date().toISOString(),
-          status: 'pending',
-          coverLetter: `Application from ${user.name} for this internship position.`,
-          additionalDocuments: []
-        }
-      );
-      
+
+      await internshipApplicationService.create({
+        student_id: user.id,
+        program_id: programId,
+        application_date: new Date().toISOString(),
+        status: 'pending',
+        cover_letter: `Application from ${user.name} for this internship position.`,
+        additional_documents: []
+      } as any);
+
       alert('Application submitted successfully!');
-      
-      // Refresh applications
       loadDashboardData();
-      
     } catch (error) {
       console.error('Error applying to internship:', error);
       alert('Failed to submit application. Please try again.');
@@ -350,7 +301,7 @@ export default function StudentDashboard() {
       
       // For demo purposes, just update local state
       // In a real app, you'd update the user's student record
-      console.log('Profile update for user:', user.$id, profileForm);
+      console.log('Profile update for user:', user.id, profileForm);
       
       setProfile(prev => prev ? ({ ...prev, ...profileForm }) : null);
       setProfileEditing(false);
@@ -499,7 +450,7 @@ export default function StudentDashboard() {
                 <div className="space-y-4">
                   {filteredInternships.length > 0 ? (
                     filteredInternships.map((internship) => (
-                      <div key={internship.$id} className="p-6 border rounded-lg hover:bg-gray-50 transition-colors">
+                      <div key={internship.id} className="p-6 border rounded-lg hover:bg-gray-50 transition-colors">
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="font-semibold text-lg mb-1">{internship.title}</h3>
@@ -564,10 +515,10 @@ export default function StudentDashboard() {
                             </Button>
                             <Button
                               
-                              onClick={() => applyToInternship(internship.$id)}
-                              disabled={applications.some(app => app.programId === internship.$id)}
+                              onClick={() => applyToInternship(internship.id)}
+                              disabled={applications.some((app: any) => app.program_id === internship.id)}
                             >
-                              {applications.some(app => app.programId === internship.$id) ? (
+                              {applications.some((app: any) => app.program_id === internship.id) ? (
                                 <>Already Applied</>
                               ) : (
                                 <>
@@ -615,9 +566,9 @@ export default function StudentDashboard() {
               <div className="space-y-4">
                 {applications.length > 0 ? (
                   applications.map((application) => (
-                    <div key={application.$id} className="flex items-center justify-between p-4 border rounded-lg">
+                    <div key={application.id} className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="flex-1">
-                        <h3 className="font-semibold">Application #{application.$id.slice(-8)}</h3>
+                        <h3 className="font-semibold">Application #{application.id.slice(-8)}</h3>
                         <p className="text-sm text-muted-foreground mb-2">
                           Applied on {new Date(application.applicationDate).toLocaleDateString()}
                         </p>

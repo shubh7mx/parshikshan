@@ -94,7 +94,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         // This would load the role-specific profile from database
         // For now, we'll create a basic profile structure
         const profile = {
-          $id: currentUser.$id + '_profile',
+          id: currentUser.id + '_profile',
           name: currentUser.name,
           email: currentUser.email,
           role: currentUser.role

@@ -15,7 +15,6 @@ const nextConfig: NextConfig = {
   },
   // Image optimization
   images: {
-    domains: ['cloud.appwrite.io'], // Add Appwrite domain for images
   },
 };
 

@@ -224,7 +224,7 @@ export function MainNav({ user, notifications = 0, onLogout }: MainNavProps) {
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" className="relative h-8 w-8 rounded-full">
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.profileImage} alt={user.name} />
+                    <AvatarImage src={user.profile_image} alt={user.name} />
                     <AvatarFallback className="text-xs">
                       {user.name.split(' ').map(n => n[0]).join('').toUpperCase()}
                     </AvatarFallback>

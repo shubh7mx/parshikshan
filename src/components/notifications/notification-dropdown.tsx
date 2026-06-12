@@ -45,7 +45,7 @@ export function NotificationDropdown() {
   const handleNotificationClick = async (notification: any) => {
     // Mark as read if not already read
     if (!notification.isRead) {
-      await markAsRead(notification.$id);
+      await markAsRead(notification.id);
     }
     
     // Navigate to action URL if available
@@ -149,7 +149,7 @@ export function NotificationDropdown() {
             <div className="p-1">
               {notifications.map((notification) => (
                 <div
-                  key={notification.$id}
+                  key={notification.id}
                   className={`
                     relative group border-l-4 rounded-r-lg p-3 mb-2 cursor-pointer
                     hover:bg-gray-50 transition-colors
@@ -183,7 +183,7 @@ export function NotificationDropdown() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
                               {!notification.isRead ? (
-                                <DropdownMenuItem onClick={() => markAsRead(notification.$id)}>
+                                <DropdownMenuItem onClick={() => markAsRead(notification.id)}>
                                   <Check className="h-3 w-3 mr-2" />
                                   Mark as read
                                 </DropdownMenuItem>
@@ -205,7 +205,7 @@ export function NotificationDropdown() {
                               
                               <DropdownMenuItem 
                                 className="text-red-600" 
-                                onClick={() => deleteNotification(notification.$id)}
+                                onClick={() => deleteNotification(notification.id)}
                               >
                                 <Trash2 className="h-3 w-3 mr-2" />
                                 Delete
@@ -221,7 +221,7 @@ export function NotificationDropdown() {
                       
                       <div className="flex items-center justify-between mt-2">
                         <span className="text-xs text-muted-foreground">
-                          {formatNotificationTime(notification.$createdAt)}
+                          {formatNotificationTime(notification.created_at)}
                         </span>
                         
                         {notification.actionUrl && notification.actionLabel && (

@@ -1,70 +1,65 @@
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
+import { jwtVerify } from 'jose';
 
-// Define protected routes and their required roles
+const JWT_SECRET = new TextEncoder().encode(process.env.JWT_SECRET || 'dev-secret-change-in-production');
+
 const protectedRoutes = {
   '/student': ['student'],
   '/faculty': ['faculty'],
   '/admin': ['admin'],
-  '/company': ['company'],
+  '/company': ['industry_partner'],
 } as const;
 
 const publicRoutes = [
-  '/', 
-  '/login', 
-  '/register', 
+  '/',
+  '/login',
+  '/register',
   '/forgot-password',
   '/reset-password',
-  '/about', 
+  '/about',
   '/contact',
-  '/api/auth'
+  '/api/auth',
 ];
 
-export function middleware(request: NextRequest) {
+async function verifyAuthToken(token: string) {
+  try {
+    const { payload } = await jwtVerify(token, JWT_SECRET);
+    return payload as unknown as { userId: string; email: string; role: string };
+  } catch {
+    return null;
+  }
+}
+
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  
-  // Allow static files and API routes
-  if (pathname.startsWith('/_next/') || 
-      pathname.startsWith('/favicon') ||
-      pathname.startsWith('/api/')) {
+
+  if (pathname.startsWith('/_next/') || pathname.startsWith('/favicon')) {
     return NextResponse.next();
   }
-  
-  // Check if the route is public
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
+
+  if (publicRoutes.some((route) => pathname === route || pathname.startsWith(route + '/'))) {
     return NextResponse.next();
   }
-  
-  // Check if the route is protected
-  const protectedRoute = Object.keys(protectedRoutes).find(route => 
-    pathname.startsWith(route)
-  );
-  
-  if (protectedRoute) {
-    // Check for authentication session
-    const sessionCookie = request.cookies.get('a_session_' + process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID);
-    
-    if (!sessionCookie) {
-      // Redirect to login if not authenticated
-      const loginUrl = new URL('/login', request.url);
-      loginUrl.searchParams.set('redirect', pathname);
-      return NextResponse.redirect(loginUrl);
-    }
+
+  const authToken = request.cookies.get('auth_token');
+
+  if (!authToken) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(loginUrl);
   }
-  
+
+  const payload = await verifyAuthToken(authToken.value);
+  if (!payload) {
+    const loginUrl = new URL('/login', request.url);
+    loginUrl.searchParams.set('redirect', pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
   return NextResponse.next();
 }
 
 export const config = {
-  matcher: [
-    /*
-     * Match all request paths except for the ones starting with:
-     * - api (API routes)
-     * - _next/static (static files)
-     * - _next/image (image optimization files)
-     * - favicon.ico (favicon file)
-     * - public (public files)
-     */
-    '/((?!api|_next/static|_next/image|favicon.ico|public).*)',
-  ],
+  matcher: ['/((?!api|_next/static|_next/image|favicon.ico|public).*)'],
 };

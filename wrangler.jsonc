@@ -1,0 +1,23 @@
+{
+  "name": "prashiskshan",
+  "pages_build_output_dir": ".vercel/output/static",
+  "compatibility_date": "2025-01-01",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "prashiskshan-db",
+      "database_id": "0059c324-f130-41a8-beb5-513363172e21"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "DOCUMENTS",
+      "bucket_name": "prashiskshan-documents"
+    },
+    {
+      "binding": "PROFILE_IMAGES",
+      "bucket_name": "prashiskshan-profile-images"
+    }
+  ]
+}

@@ -1,5 +1,4 @@
-import { Query } from 'appwrite';
-import { databases, DATABASE_ID, COLLECTIONS, handleAppwriteError } from './appwrite';
+import { getDB, uuid, buildSetClause, handleError, parseJSON, formatPagination } from './d1';
 import type {
   User,
   College,
@@ -17,287 +16,451 @@ import type {
 
 // Generic database service class
 class DatabaseService {
-  private collectionId: string;
+  private tableName: string;
 
-  constructor(collectionId: string) {
-    this.collectionId = collectionId;
+  constructor(tableName: string) {
+    this.tableName = tableName;
   }
 
-  async create<T>(data: Omit<T, '$id' | '$createdAt' | '$updatedAt'>): Promise<ApiResponse<T>> {
+  async create<T extends Record<string, unknown>>(
+    data: Omit<T, 'id' | 'created_at' | 'updated_at'>
+  ): Promise<ApiResponse<T>> {
     try {
-      const result = await databases.createDocument(
-        DATABASE_ID,
-        this.collectionId,
-        'unique()',
-        data
+      const db = getDB();
+      const id = uuid();
+      const columns = ['id', ...Object.keys(data as Record<string, unknown>)];
+      const placeholders = columns.map(() => '?');
+      const values = [id, ...Object.values(data as Record<string, unknown>)].map((v) =>
+        Array.isArray(v) ? JSON.stringify(v) : v
       );
+
+      const result = await db
+        .prepare(
+          `INSERT INTO ${this.tableName} (${columns.join(', ')}) VALUES (${placeholders.join(', ')}) RETURNING *`
+        )
+        .bind(...values)
+        .first<T>();
+
       return { success: true, data: result as T };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<T>;
     }
   }
 
   async getById<T>(id: string): Promise<ApiResponse<T>> {
     try {
-      const result = await databases.getDocument(DATABASE_ID, this.collectionId, id);
-      return { success: true, data: result as T };
+      const db = getDB();
+      const result = await db
+        .prepare(`SELECT * FROM ${this.tableName} WHERE id = ?`)
+        .bind(id)
+        .first<T>();
+
+      if (!result) {
+        return { success: false, error: 'Resource not found', code: 404 };
+      }
+      return { success: true, data: result };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<T>;
     }
   }
 
   async update<T>(id: string, data: Partial<T>): Promise<ApiResponse<T>> {
     try {
-      const result = await databases.updateDocument(
-        DATABASE_ID,
-        this.collectionId,
-        id,
-        data
-      );
-      return { success: true, data: result as T };
+      const db = getDB();
+      const { setClause, values } = buildSetClause(data as Record<string, unknown>);
+
+      const result = await db
+        .prepare(`UPDATE ${this.tableName} SET ${setClause}, updated_at = datetime('now') WHERE id = ? RETURNING *`)
+        .bind(...values, id)
+        .first<T>();
+
+      if (!result) {
+        return { success: false, error: 'Resource not found', code: 404 };
+      }
+      return { success: true, data: result };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<T>;
     }
   }
 
   async delete(id: string): Promise<ApiResponse<void>> {
     try {
-      await databases.deleteDocument(DATABASE_ID, this.collectionId, id);
+      const db = getDB();
+      const result = await db
+        .prepare(`DELETE FROM ${this.tableName} WHERE id = ?`)
+        .bind(id)
+        .run();
+
+      if (result.changes === 0) {
+        return { success: false, error: 'Resource not found', code: 404 };
+      }
       return { success: true };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<void>;
     }
   }
 
   async list<T>(
-    queries: string[] = [],
+    filters: { column: string; value: unknown }[] = [],
     pagination?: PaginationParams
   ): Promise<ApiResponse<{ documents: T[]; total: number }>> {
     try {
-      const queryList = [...queries];
-      
-      if (pagination) {
-        queryList.push(Query.limit(pagination.limit));
-        queryList.push(Query.offset((pagination.page - 1) * pagination.limit));
-        
-        if (pagination.orderBy) {
-          const order = pagination.orderType === 'DESC' ? Query.orderDesc : Query.orderAsc;
-          queryList.push(order(pagination.orderBy));
-        }
+      const db = getDB();
+
+      let whereClause = '';
+      const whereValues: unknown[] = [];
+
+      if (filters.length > 0) {
+        const clauses = filters.map((f) => {
+          whereValues.push(f.value);
+          return `${f.column} = ?`;
+        });
+        whereClause = ' WHERE ' + clauses.join(' AND ');
       }
 
-      const result = await databases.listDocuments(DATABASE_ID, this.collectionId, queryList);
-      return {
-        success: true,
-        data: {
-          documents: result.documents as unknown as T[],
-          total: result.total
-        }
-      };
+      const { limitClause, offsetClause, orderClause } = formatPagination(pagination);
+
+      const countResult = await db
+        .prepare(`SELECT COUNT(*) as count FROM ${this.tableName}${whereClause}`)
+        .bind(...whereValues)
+        .first<{ count: number }>();
+
+      const total = countResult?.count || 0;
+
+      const result = await db
+        .prepare(`SELECT * FROM ${this.tableName}${whereClause}${orderClause}${limitClause}${offsetClause}`)
+        .bind(...whereValues, pagination?.limit || 20, ((pagination?.page || 1) - 1) * (pagination?.limit || 20))
+        .all<T>();
+
+      return { success: true, data: { documents: result.results, total } };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<{ documents: T[]; total: number }>;
     }
   }
 
   async search<T>(
     searchTerm: string,
-    searchFields: string[] = [],
-    additionalQueries: string[] = []
+    searchFields: string[],
+    filters: { column: string; value: unknown }[] = []
   ): Promise<ApiResponse<T[]>> {
     try {
-      const queries = [...additionalQueries];
-      
+      const db = getDB();
+
+      const conditions: string[] = [];
+      const values: unknown[] = [];
+
       if (searchTerm && searchFields.length > 0) {
-        // Create search queries for each field
-        const searchQueries = searchFields.map(field => 
-          Query.search(field, searchTerm)
-        );
-        queries.push(...searchQueries);
+        const likeTerm = `%${searchTerm}%`;
+        const searchClauses = searchFields.map(() => {
+          values.push(likeTerm);
+          return ` LIKE ?`;
+        });
+        conditions.push(`(${searchFields.join(' OR ')}${searchClauses.join('')})`);
       }
 
-      const result = await databases.listDocuments(DATABASE_ID, this.collectionId, queries);
-      return { success: true, data: result.documents as unknown as T[] };
+      for (const f of filters) {
+        conditions.push(`${f.column} = ?`);
+        values.push(f.value);
+      }
+
+      const whereClause = conditions.length > 0 ? ' WHERE ' + conditions.join(' AND ') : '';
+
+      const result = await db
+        .prepare(`SELECT * FROM ${this.tableName}${whereClause} ORDER BY created_at DESC`)
+        .bind(...values)
+        .all<T>();
+
+      return { success: true, data: result.results };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<T[]>;
     }
   }
 }
 
 // Create service instances for each collection
-export const userService = new DatabaseService(COLLECTIONS.USERS);
-export const collegeService = new DatabaseService(COLLECTIONS.COLLEGES);
-export const studentService = new DatabaseService(COLLECTIONS.STUDENTS);
-export const companyService = new DatabaseService(COLLECTIONS.COMPANIES);
-export const internshipProgramService = new DatabaseService(COLLECTIONS.INTERNSHIP_PROGRAMS);
-export const internshipApplicationService = new DatabaseService(COLLECTIONS.INTERNSHIP_APPLICATIONS);
-export const internshipService = new DatabaseService(COLLECTIONS.INTERNSHIPS);
-export const logbookEntryService = new DatabaseService(COLLECTIONS.LOGBOOK_ENTRIES);
-export const reportService = new DatabaseService(COLLECTIONS.REPORTS);
-export const notificationService = new DatabaseService(COLLECTIONS.NOTIFICATIONS);
+export const userService = new DatabaseService('users');
+export const collegeService = new DatabaseService('colleges');
+export const studentService = new DatabaseService('students');
+export const companyService = new DatabaseService('companies');
+export const internshipProgramService = new DatabaseService('internship_programs');
+export const internshipApplicationService = new DatabaseService('internship_applications');
+export const internshipService = new DatabaseService('internships');
+export const logbookEntryService = new DatabaseService('logbook_entries');
+export const reportService = new DatabaseService('reports');
+export const notificationService = new DatabaseService('notifications');
 
 // Specialized database operations
 export const dbOperations = {
-  // User operations
   async getUserByEmail(email: string): Promise<ApiResponse<User>> {
     try {
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.USERS,
-        [Query.equal('email', email)]
-      );
-      
-      if (result.documents.length === 0) {
+      const db = getDB();
+      const result = await db
+        .prepare('SELECT * FROM users WHERE email = ?')
+        .bind(email)
+        .first<User>();
+
+      if (!result) {
         return { success: false, error: 'User not found', code: 404 };
       }
-      
-      return { success: true, data: result.documents[0] as unknown as User };
+      return { success: true, data: result };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<User>;
     }
   },
 
-  // Student operations
   async getStudentWithDetails(studentId: string): Promise<ApiResponse<Student>> {
     try {
-      const student = await studentService.getById<Student>(studentId);
-      if (!student.success || !student.data) {
-        return student;
+      const db = getDB();
+      const result = await db
+        .prepare(`
+          SELECT s.*,
+            u.id as u_id, u.name as u_name, u.email as u_email, u.phone as u_phone,
+            u.role as u_role, u.profile_image as u_profile_image, u.is_active as u_is_active,
+            u.created_at as u_created_at, u.updated_at as u_updated_at,
+            c.id as c_id, c.name as c_name, c.code as c_code, c.address as c_address,
+            c.contact_email as c_contact_email, c.contact_phone as c_contact_phone,
+            c.principal_id as c_principal_id, c.is_verified as c_is_verified,
+            c.established_year as c_established_year, c.affiliated_university as c_affiliated_university,
+            c.created_at as c_created_at, c.updated_at as c_updated_at
+          FROM students s
+          JOIN users u ON s.user_id = u.id
+          JOIN colleges c ON s.college_id = c.id
+          WHERE s.id = ?
+        `)
+        .bind(studentId)
+        .first<Record<string, unknown>>();
+
+      if (!result) {
+        return { success: false, error: 'Student not found', code: 404 };
       }
 
-      // Populate user and college data
-      const [userResult, collegeResult] = await Promise.all([
-        userService.getById<User>(student.data.userId),
-        collegeService.getById<College>(student.data.collegeId)
-      ]);
-
-      const populatedStudent = {
-        ...student.data,
-        user: userResult.data,
-        college: collegeResult.data
+      const student: Student = {
+        id: result.id as string,
+        user_id: result.user_id as string,
+        college_id: result.college_id as string,
+        roll_number: result.roll_number as string,
+        semester: result.semester as number,
+        course: result.course as string,
+        academic_year: result.academic_year as string,
+        cgpa: result.cgpa as number | undefined,
+        skills: parseJSON<string[]>(result.skills as string, []),
+        resume: result.resume as string | undefined,
+        is_eligible_for_internship: Boolean(result.is_eligible_for_internship),
+        created_at: result.created_at as string,
+        updated_at: result.updated_at as string,
+        user: {
+          id: result.u_id as string,
+          name: result.u_name as string,
+          email: result.u_email as string,
+          phone: result.u_phone as string | undefined,
+          role: result.u_role as User['role'],
+          profile_image: result.u_profile_image as string | undefined,
+          is_active: Boolean(result.u_is_active),
+          created_at: result.u_created_at as string,
+          updated_at: result.u_updated_at as string,
+        },
+        college: {
+          id: result.c_id as string,
+          name: result.c_name as string,
+          code: result.c_code as string,
+          address: result.c_address as string,
+          contact_email: result.c_contact_email as string,
+          contact_phone: result.c_contact_phone as string,
+          principal_id: result.c_principal_id as string,
+          is_verified: Boolean(result.c_is_verified),
+          established_year: result.c_established_year as number,
+          affiliated_university: result.c_affiliated_university as string,
+          created_at: result.c_created_at as string,
+          updated_at: result.c_updated_at as string,
+        },
       };
 
-      return { success: true, data: populatedStudent };
+      return { success: true, data: student };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<Student>;
     }
   },
 
-  // Company operations
   async getCompaniesWithContact(): Promise<ApiResponse<Company[]>> {
     try {
-      const companies = await companyService.list<Company>();
-      if (!companies.success || !companies.data) {
-        return { success: false, error: companies.error || 'Failed to fetch companies' };
-      }
+      const db = getDB();
+      const result = await db
+        .prepare(`
+          SELECT c.*,
+            u.id as u_id, u.name as u_name, u.email as u_email, u.role as u_role,
+            u.phone as u_phone, u.profile_image as u_profile_image, u.is_active as u_is_active,
+            u.created_at as u_created_at, u.updated_at as u_updated_at
+          FROM companies c
+          JOIN users u ON c.contact_person_id = u.id
+          ORDER BY c.name
+        `)
+        .all<Record<string, unknown>>();
 
-      const companiesWithContact = await Promise.all(
-        companies.data.documents.map(async (company) => {
-          const contactResult = await userService.getById<User>(company.contactPersonId);
-          return {
-            ...company,
-            contactPerson: contactResult.data
-          };
-        })
-      );
+      const companies: Company[] = result.results.map((row: Record<string, unknown>) => ({
+        id: row.id as string,
+        name: row.name as string,
+        industry: row.industry as string,
+        website: row.website as string | undefined,
+        description: row.description as string,
+        address: row.address as string,
+        contact_person_id: row.contact_person_id as string,
+        company_size: row.company_size as Company['company_size'],
+        is_verified: Boolean(row.is_verified),
+        registration_number: row.registration_number as string | undefined,
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        contact_person: {
+          id: row.u_id as string,
+          name: row.u_name as string,
+          email: row.u_email as string,
+          role: row.u_role as User['role'],
+          phone: row.u_phone as string | undefined,
+          profile_image: row.u_profile_image as string | undefined,
+          is_active: Boolean(row.u_is_active),
+          created_at: row.u_created_at as string,
+          updated_at: row.u_updated_at as string,
+        },
+      }));
 
-      return { success: true, data: companiesWithContact };
+      return { success: true, data: companies };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<Company[]>;
     }
   },
 
-  // Internship program operations
   async searchInternshipPrograms(
     searchTerm?: string,
-    filters?: any
+    filters?: { location?: string; mode?: string; duration?: number }
   ): Promise<ApiResponse<InternshipProgram[]>> {
     try {
-      const queries = [Query.equal('status', 'published')];
+      const db = getDB();
+      const conditions: string[] = ["ip.status = 'published'"];
+      const values: unknown[] = [];
 
       if (searchTerm) {
-        queries.push(Query.search('title', searchTerm));
+        conditions.push('ip.title LIKE ?');
+        values.push(`%${searchTerm}%`);
       }
-
       if (filters?.location) {
-        queries.push(Query.equal('location', filters.location));
+        conditions.push('ip.location = ?');
+        values.push(filters.location);
       }
-
       if (filters?.mode) {
-        queries.push(Query.equal('mode', filters.mode));
+        conditions.push('ip.mode = ?');
+        values.push(filters.mode);
       }
-
       if (filters?.duration) {
-        queries.push(Query.equal('duration', filters.duration));
+        conditions.push('ip.duration = ?');
+        values.push(filters.duration);
       }
 
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.INTERNSHIP_PROGRAMS,
-        queries
-      );
+      const result = await db
+        .prepare(
+          `SELECT ip.*, c.name as company_name, c.industry as company_industry 
+           FROM internship_programs ip 
+           JOIN companies c ON ip.company_id = c.id 
+           WHERE ${conditions.join(' AND ')} 
+           ORDER BY ip.created_at DESC`
+        )
+        .bind(...values)
+        .all<Record<string, unknown>>();
 
-      return { success: true, data: result.documents as unknown as InternshipProgram[] };
+      const programs: InternshipProgram[] = result.results.map((row) => ({
+        id: row.id as string,
+        title: row.title as string,
+        description: row.description as string,
+        company_id: row.company_id as string,
+        duration: row.duration as number,
+        stipend: row.stipend as number | undefined,
+        location: row.location as string,
+        mode: row.mode as InternshipProgram['mode'],
+        required_skills: parseJSON<string[]>(row.required_skills as string, []),
+        eligible_courses: parseJSON<string[]>(row.eligible_courses as string, []),
+        minimum_cgpa: row.minimum_cgpa as number | undefined,
+        max_positions: row.max_positions as number,
+        application_deadline: row.application_deadline as string,
+        start_date: row.start_date as string,
+        end_date: row.end_date as string,
+        status: row.status as InternshipProgram['status'],
+        created_at: row.created_at as string,
+        updated_at: row.updated_at as string,
+        company: {
+          id: row.company_id as string,
+          name: row.company_name as string,
+          industry: row.company_industry as string,
+          description: '',
+          address: '',
+          contact_person_id: '',
+          company_size: 'small' as Company['company_size'],
+          is_verified: false,
+          created_at: '',
+          updated_at: '',
+        },
+      }));
+
+      return { success: true, data: programs };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<InternshipProgram[]>;
     }
   },
 
-  // Application operations
   async getApplicationsForStudent(studentId: string): Promise<ApiResponse<InternshipApplication[]>> {
     try {
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.INTERNSHIP_APPLICATIONS,
-        [Query.equal('studentId', studentId), Query.orderDesc('$createdAt')]
-      );
+      const db = getDB();
+      const result = await db
+        .prepare('SELECT * FROM internship_applications WHERE student_id = ? ORDER BY created_at DESC')
+        .bind(studentId)
+        .all<InternshipApplication>();
 
-      return { success: true, data: result.documents as unknown as InternshipApplication[] };
+      return { success: true, data: result.results };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<InternshipApplication[]>;
     }
   },
 
-  // Logbook operations
   async getLogbookEntriesForInternship(internshipId: string): Promise<ApiResponse<LogbookEntry[]>> {
     try {
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.LOGBOOK_ENTRIES,
-        [Query.equal('internshipId', internshipId), Query.orderDesc('date')]
-      );
+      const db = getDB();
+      const result = await db
+        .prepare('SELECT * FROM logbook_entries WHERE internship_id = ? ORDER BY date DESC')
+        .bind(internshipId)
+        .all<LogbookEntry>();
 
-      return { success: true, data: result.documents as unknown as LogbookEntry[] };
+      const entries = result.results.map((e: LogbookEntry) => ({
+        ...e,
+        attachments: parseJSON<string[]>(e.attachments as unknown as string, []),
+      }));
+
+      return { success: true, data: entries };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<LogbookEntry[]>;
     }
   },
 
-  // Notification operations
   async getNotificationsForUser(userId: string): Promise<ApiResponse<Notification[]>> {
     try {
-      const result = await databases.listDocuments(
-        DATABASE_ID,
-        COLLECTIONS.NOTIFICATIONS,
-        [Query.equal('userId', userId), Query.orderDesc('$createdAt')]
-      );
+      const db = getDB();
+      const result = await db
+        .prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC')
+        .bind(userId)
+        .all<Notification>();
 
-      return { success: true, data: result.documents as unknown as Notification[] };
+      return { success: true, data: result.results };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<Notification[]>;
     }
   },
 
   async markNotificationAsRead(notificationId: string): Promise<ApiResponse<void>> {
     try {
-      await databases.updateDocument(
-        DATABASE_ID,
-        COLLECTIONS.NOTIFICATIONS,
-        notificationId,
-        { isRead: true }
-      );
+      const db = getDB();
+      await db
+        .prepare("UPDATE notifications SET is_read = 1, updated_at = datetime('now') WHERE id = ?")
+        .bind(notificationId)
+        .run();
       return { success: true };
     } catch (error) {
-      return { success: false, ...handleAppwriteError(error) };
+      return handleError(error) as ApiResponse<void>;
     }
-  }
+  },
 };

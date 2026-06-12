@@ -47,7 +47,7 @@ import {
   ExternalLink
 } from 'lucide-react';
 import { useApp } from '@/components/providers/app-provider';
-import { databases, ID } from '@/lib/appwrite';
+import { dbOperations } from '@/lib/database';
 
 interface SkillAssessment {
   $id: string;

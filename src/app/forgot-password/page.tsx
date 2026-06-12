@@ -8,7 +8,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { account } from '@/lib/appwrite';
+async function sendPasswordRecovery(email: string) {
+  const response = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'resetPassword', email }),
+  });
+  return response.json();
+}
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -22,11 +29,12 @@ export default function ForgotPasswordPage() {
     setError('');
 
     try {
-      await account.createRecovery(
-        email,
-        `${window.location.origin}/reset-password`
-      );
-      setSuccess(true);
+      const result = await sendPasswordRecovery(email);
+      if (result.success) {
+        setSuccess(true);
+      } else {
+        setError(result.error || 'Failed to send reset email');
+      }
     } catch (error: any) {
       setError(error.message || 'Failed to send reset email');
     } finally {

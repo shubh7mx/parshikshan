@@ -2,47 +2,47 @@
 export type UserRole = 'student' | 'faculty' | 'admin' | 'industry_partner';
 
 export interface User {
-  $id: string;
+  id: string;
   name: string;
   email: string;
   phone?: string;
   role: UserRole;
-  profileImage?: string;
-  isActive: boolean;
-  $createdAt: string;
-  $updatedAt: string;
+  profile_image?: string;
+  is_active: boolean;
+  password_hash?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface College {
-  $id: string;
+  id: string;
   name: string;
   code: string;
   address: string;
-  contactEmail: string;
-  contactPhone: string;
-  principalId: string;
-  isVerified: boolean;
-  establishedYear: number;
-  affiliatedUniversity: string;
-  $createdAt: string;
-  $updatedAt: string;
+  contact_email: string;
+  contact_phone: string;
+  principal_id: string;
+  is_verified: boolean;
+  established_year: number;
+  affiliated_university: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface Student {
-  $id: string;
-  userId: string;
-  collegeId: string;
-  rollNumber: string;
+  id: string;
+  user_id: string;
+  college_id: string;
+  roll_number: string;
   semester: number;
   course: string;
-  academicYear: string;
+  academic_year: string;
   cgpa?: number;
   skills: string[];
   resume?: string;
-  isEligibleForInternship: boolean;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  is_eligible_for_internship: boolean;
+  created_at: string;
+  updated_at: string;
   user?: User;
   college?: College;
 }
@@ -50,64 +50,61 @@ export interface Student {
 export type CompanySize = 'startup' | 'small' | 'medium' | 'large' | 'enterprise';
 
 export interface Company {
-  $id: string;
+  id: string;
   name: string;
   industry: string;
   website?: string;
   description: string;
   address: string;
-  contactPersonId: string;
-  companySize: CompanySize;
-  isVerified: boolean;
-  registrationNumber?: string;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
-  contactPerson?: User;
+  contact_person_id: string;
+  company_size: CompanySize;
+  is_verified: boolean;
+  registration_number?: string;
+  created_at: string;
+  updated_at: string;
+  contact_person?: User;
 }
 
 export type InternshipMode = 'onsite' | 'remote' | 'hybrid';
 export type InternshipProgramStatus = 'draft' | 'published' | 'closed' | 'completed';
 
 export interface InternshipProgram {
-  $id: string;
+  id: string;
   title: string;
   description: string;
-  companyId: string;
-  duration: number; // in weeks
+  company_id: string;
+  duration: number;
   stipend?: number;
   location: string;
   mode: InternshipMode;
-  requiredSkills: string[];
-  eligibleCourses: string[];
-  minimumCGPA?: number;
-  maxPositions: number;
-  applicationDeadline: string;
-  startDate: string;
-  endDate: string;
+  required_skills: string[];
+  eligible_courses: string[];
+  minimum_cgpa?: number;
+  max_positions: number;
+  application_deadline: string;
+  start_date: string;
+  end_date: string;
   status: InternshipProgramStatus;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  created_at: string;
+  updated_at: string;
   company?: Company;
 }
 
 export type ApplicationStatus = 'pending' | 'shortlisted' | 'selected' | 'rejected';
 
 export interface InternshipApplication {
-  $id: string;
-  studentId: string;
-  programId: string;
-  applicationDate: string;
-  coverLetter?: string;
-  additionalDocuments: string[];
+  id: string;
+  student_id: string;
+  program_id: string;
+  application_date: string;
+  cover_letter?: string;
+  additional_documents: string[];
   status: ApplicationStatus;
-  facultyRecommendation?: string;
-  interviewDate?: string;
-  selectionDate?: string;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  faculty_recommendation?: string;
+  interview_date?: string;
+  selection_date?: string;
+  created_at: string;
+  updated_at: string;
   student?: Student;
   program?: InternshipProgram;
 }
@@ -115,73 +112,70 @@ export interface InternshipApplication {
 export type InternshipStatus = 'not_started' | 'ongoing' | 'completed' | 'terminated';
 
 export interface Internship {
-  $id: string;
-  applicationId: string;
-  mentorId: string;
-  facultyCoordinatorId: string;
-  startDate: string;
-  endDate: string;
+  id: string;
+  application_id: string;
+  mentor_id: string;
+  faculty_coordinator_id: string;
+  start_date: string;
+  end_date: string;
   objectives: string[];
   status: InternshipStatus;
-  finalGrade?: string;
-  certificateIssued: boolean;
-  creditsAwarded: number;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  final_grade?: string;
+  certificate_issued: boolean;
+  credits_awarded: number;
+  created_at: string;
+  updated_at: string;
   application?: InternshipApplication;
   mentor?: User;
-  facultyCoordinator?: User;
+  faculty_coordinator?: User;
 }
 
 export interface LogbookEntry {
-  $id: string;
-  internshipId: string;
+  id: string;
+  internship_id: string;
   date: string;
-  hoursWorked: number;
-  tasksCompleted: string;
-  learningOutcomes: string;
+  hours_worked: number;
+  tasks_completed: string;
+  learning_outcomes: string;
   challenges?: string;
-  mentorFeedback?: string;
+  mentor_feedback?: string;
   attachments: string[];
-  isVerified: boolean;
-  verifiedBy?: string;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  is_verified: boolean;
+  verified_by?: string;
+  created_at: string;
+  updated_at: string;
   internship?: Internship;
 }
 
 export type ReportType = 'weekly' | 'monthly' | 'final';
 
 export interface Report {
-  $id: string;
-  internshipId: string;
+  id: string;
+  internship_id: string;
   type: ReportType;
   content: string;
   attachments: string[];
-  submissionDate: string;
+  submission_date: string;
   feedback?: string;
   grade?: string;
-  isApproved: boolean;
-  $createdAt: string;
-  $updatedAt: string;
-  // Populated fields
+  is_approved: boolean;
+  created_at: string;
+  updated_at: string;
   internship?: Internship;
 }
 
 export type NotificationType = 'info' | 'warning' | 'success' | 'error';
 
 export interface Notification {
-  $id: string;
-  userId: string;
+  id: string;
+  user_id: string;
   title: string;
   message: string;
   type: NotificationType;
-  isRead: boolean;
-  actionUrl?: string;
-  $createdAt: string;
-  $updatedAt: string;
+  is_read: boolean;
+  action_url?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 // Form and API types
@@ -240,7 +234,7 @@ export interface PaginationParams {
 
 // File upload types
 export interface FileUploadResult {
-  $id: string;
+  id: string;
   name: string;
   size: number;
   mimeType: string;

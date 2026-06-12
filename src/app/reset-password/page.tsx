@@ -9,7 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { account } from '@/lib/appwrite';
+async function completeReset(token: string, newPassword: string) {
+  const response = await fetch('/api/auth', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'completeReset', token, newPassword }),
+  });
+  return response.json();
+}
 
 export default function ResetPasswordPage() {
   const [password, setPassword] = useState('');
@@ -55,14 +62,15 @@ export default function ResetPasswordPage() {
     }
 
     try {
-      await account.updateRecovery(userId, secret, password);
-      setSuccess(true);
-      
-      // Redirect to login after 3 seconds
-      setTimeout(() => {
-        router.push('/login');
-      }, 3000);
-      
+      const result = await completeReset(secret, password);
+      if (result.success) {
+        setSuccess(true);
+        setTimeout(() => {
+          router.push('/login');
+        }, 3000);
+      } else {
+        setError(result.error || 'Password reset failed');
+      }
     } catch (error: any) {
       setError(error.message || 'Failed to reset password');
     } finally {

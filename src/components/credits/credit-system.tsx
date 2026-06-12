@@ -23,7 +23,7 @@ import {
 import { CreditOperations } from '@/lib/database-operations';
 
 interface CreditRecord {
-  $id: string;
+  id: string;
   internshipId: string;
   studentId: string;
   internshipTitle: string;
@@ -67,7 +67,7 @@ export function CreditSystem({ userId }: { userId: string }) {
       // Mock data for NEP 2020 compliant credit system
       const mockRecords: CreditRecord[] = [
         {
-          $id: '1',
+          id: '1',
           internshipId: 'int1',
           studentId: userId,
           internshipTitle: 'Software Development Intern',
@@ -83,7 +83,7 @@ export function CreditSystem({ userId }: { userId: string }) {
           nepCompliant: true
         },
         {
-          $id: '2',
+          id: '2',
           internshipId: 'int2',
           studentId: userId,
           internshipTitle: 'Data Analytics Intern',
@@ -226,7 +226,7 @@ export function CreditSystem({ userId }: { userId: string }) {
           <div className="space-y-4">
             {creditRecords.length > 0 ? (
               creditRecords.map((record) => (
-                <div key={record.$id} className="p-6 border rounded-lg">
+                <div key={record.id} className="p-6 border rounded-lg">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex-1">
                       <div className="flex items-center gap-3 mb-2">

@@ -2,12 +2,15 @@
 const nextConfig = {
   // Production optimizations
   output: 'standalone',
-  poweredByHeader: false,
+  // Disable image optimization for Cloudflare Pages
+  images: {
+    unoptimized: true,
+    formats: ['image/webp', 'image/avif'],
+  },
   reactStrictMode: true,
   
   // Image optimization
   images: {
-    domains: ['cloud.appwrite.io'],
     formats: ['image/webp', 'image/avif'],
   },
   

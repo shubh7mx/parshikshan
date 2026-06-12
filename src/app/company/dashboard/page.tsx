@@ -36,7 +36,7 @@ import {
   Building2
 } from 'lucide-react';
 import { useApp } from '@/components/providers/app-provider';
-import { databases, ID } from '@/lib/appwrite';
+import { dbOperations, internshipProgramService, internshipApplicationService } from '@/lib/database';
 
 interface CompanyStats {
   totalPrograms: number;
@@ -46,7 +46,7 @@ interface CompanyStats {
 }
 
 interface InternshipProgram {
-  $id: string;
+  id: string;
   title: string;
   description: string;
   duration: number;
@@ -63,7 +63,7 @@ interface InternshipProgram {
 }
 
 interface Application {
-  $id: string;
+  id: string;
   studentId: string;
   programId: string;
   applicationDate: string;
@@ -149,112 +149,58 @@ export default function CompanyDashboard() {
 
   const loadDashboardData = async () => {
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
       if (!userProfile) return;
-      
-      // Load company's internship programs
-      const programsResult = await databases.listDocuments(
-        DATABASE_ID,
-        'internship_programs',
-        [`companyId="${userProfile.$id}"`]
-      );
-      
-      const programsData = programsResult.documents.map(doc => ({
-        $id: doc.$id,
+
+      const programsResult = await internshipProgramService.list<any>([
+        { column: 'company_id', value: userProfile.id }
+      ]);
+
+      const programsData: InternshipProgram[] = (programsResult.data?.documents || []).map((doc: any) => ({
+        id: doc.id,
         title: doc.title,
         description: doc.description,
         duration: doc.duration,
         stipend: doc.stipend,
         location: doc.location,
         mode: doc.mode,
-        requiredSkills: doc.requiredSkills || [],
-        applicationDeadline: doc.applicationDeadline,
-        startDate: doc.startDate,
-        endDate: doc.endDate,
+        requiredSkills: typeof doc.required_skills === 'string' ? JSON.parse(doc.required_skills) : (doc.required_skills || []),
+        applicationDeadline: doc.application_deadline,
+        startDate: doc.start_date,
+        endDate: doc.end_date,
         status: doc.status,
-        maxPositions: doc.maxPositions
+        maxPositions: doc.max_positions
       }));
-      
+
       setPrograms(programsData);
-      
-      // Load applications for company's programs
+
       let allApplications: Application[] = [];
-      
+
       for (const program of programsData) {
-        const applicationsResult = await databases.listDocuments(
-          DATABASE_ID,
-          'internship_applications',
-          [`programId="${program.$id}"`]
-        );
-        
-        const programApplications = await Promise.all(
-          applicationsResult.documents.map(async (app) => {
-            // Get student details
-            try {
-              const studentResult = await databases.getDocument(
-                DATABASE_ID,
-                'students',
-                app.studentId
-              );
-              
-              // Get user details for the student
-              const userResult = await databases.getDocument(
-                DATABASE_ID,
-                'users',
-                studentResult.userId
-              );
-              
-              return {
-                $id: app.$id,
-                studentId: app.studentId,
-                programId: app.programId,
-                applicationDate: app.applicationDate,
-                status: app.status,
-                coverLetter: app.coverLetter,
-                student: {
-                  name: userResult.name,
-                  email: userResult.email,
-                  rollNumber: studentResult.rollNumber,
-                  cgpa: studentResult.cgpa,
-                  course: studentResult.course,
-                  semester: studentResult.semester,
-                  skills: studentResult.skills || []
-                },
-                program: {
-                  title: program.title
-                }
-              };
-            } catch (error) {
-              console.error('Error fetching student details:', error);
-              return {
-                $id: app.$id,
-                studentId: app.studentId,
-                programId: app.programId,
-                applicationDate: app.applicationDate,
-                status: app.status,
-                coverLetter: app.coverLetter,
-                program: {
-                  title: program.title
-                }
-              };
-            }
-          })
-        );
-        
+        const applicationsResult = await internshipApplicationService.list<any>([
+          { column: 'program_id', value: program.id }
+        ]);
+
+        const programApplications: Application[] = (applicationsResult.data?.documents || []).map((app: any) => ({
+          id: app.id,
+          studentId: app.student_id,
+          programId: app.program_id,
+          applicationDate: app.application_date,
+          status: app.status,
+          coverLetter: app.cover_letter,
+          program: { title: program.title }
+        }));
+
         allApplications = [...allApplications, ...programApplications];
       }
-      
+
       setApplications(allApplications);
-      
-      // Calculate stats
+
       setStats({
         totalPrograms: programsData.length,
-        activePrograms: programsData.filter(p => p.status === 'published').length,
+        activePrograms: programsData.filter((p: any) => p.status === 'published').length,
         totalApplications: allApplications.length,
-        selectedApplications: allApplications.filter(a => a.status === 'selected').length
+        selectedApplications: allApplications.filter((a: any) => a.status === 'selected').length
       });
-      
     } catch (error) {
       console.error('Error loading dashboard data:', error);
     } finally {
@@ -266,46 +212,30 @@ export default function CompanyDashboard() {
     if (!user || !userProfile) return;
     
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
       const skillsArray = programForm.requiredSkills
         .split(',')
         .map(skill => skill.trim())
         .filter(skill => skill.length > 0);
-      
-      await databases.createDocument(
-        DATABASE_ID,
-        'internship_programs',
-        ID.unique(),
-        {
-          ...programForm,
-          companyId: userProfile.$id,
-          companyName: userProfile.name || user.name,
-          requiredSkills: skillsArray,
-          stipend: programForm.stipend ? parseFloat(programForm.stipend) : 0,
-          status: 'draft',
-          eligibleCourses: ['computer_science', 'information_technology'] // Default
-        }
-      );
-      
+
+      await internshipProgramService.create({
+        ...programForm,
+        company_id: userProfile.id,
+        companyName: userProfile.name || user.name,
+        required_skills: skillsArray,
+        stipend: programForm.stipend ? parseFloat(programForm.stipend) : 0,
+        status: 'draft',
+        eligible_courses: ['computer_science', 'information_technology']
+      } as any);
+
       alert('Internship program created successfully!');
       setShowCreateProgram(false);
       setProgramForm({
-        title: '',
-        description: '',
-        duration: 6,
-        stipend: '',
-        location: '',
-        mode: 'hybrid',
-        requiredSkills: '',
-        maxPositions: 1,
-        applicationDeadline: '',
-        startDate: '',
-        endDate: ''
+        title: '', description: '', duration: 6, stipend: '',
+        location: '', mode: 'hybrid', requiredSkills: '',
+        maxPositions: 1, applicationDeadline: '', startDate: '', endDate: ''
       });
-      
+
       loadDashboardData();
-      
     } catch (error) {
       console.error('Error creating program:', error);
       alert('Failed to create program. Please try again.');
@@ -314,18 +244,9 @@ export default function CompanyDashboard() {
 
   const updateApplicationStatus = async (applicationId: string, newStatus: string) => {
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
-      await databases.updateDocument(
-        DATABASE_ID,
-        'internship_applications',
-        applicationId,
-        { status: newStatus }
-      );
-      
+      await internshipApplicationService.update(applicationId, { status: newStatus } as any);
       alert(`Application ${newStatus} successfully!`);
       loadDashboardData();
-      
     } catch (error) {
       console.error('Error updating application:', error);
       alert('Failed to update application status.');
@@ -334,14 +255,8 @@ export default function CompanyDashboard() {
 
   const publishProgram = async (programId: string) => {
     try {
-      const DATABASE_ID = process.env.NEXT_PUBLIC_DATABASE_ID!;
-      
-      await databases.updateDocument(
-        DATABASE_ID,
-        'internship_programs',
-        programId,
-        { status: 'published' }
-      );
+      await internshipProgramService.update(programId, { status: 'published' } as any);
+      await internshipProgramService.update(programId, { status: 'published' } as any);
       
       alert('Program published successfully!');
       loadDashboardData();
@@ -622,7 +537,7 @@ export default function CompanyDashboard() {
               <CardContent>
                 <div className="space-y-4">
                   {applications.slice(0, 5).map((application) => (
-                    <div key={application.$id} className="flex items-center justify-between p-3 border rounded-lg">
+                    <div key={application.id} className="flex items-center justify-between p-3 border rounded-lg">
                       <div className="flex-1">
                         <p className="font-medium">{application.student?.name || 'Unknown Student'}</p>
                         <p className="text-sm text-muted-foreground">
@@ -674,7 +589,7 @@ export default function CompanyDashboard() {
               <div className="space-y-4">
                 {programs.length > 0 ? (
                   programs.map((program) => (
-                    <div key={program.$id} className="p-6 border rounded-lg">
+                    <div key={program.id} className="p-6 border rounded-lg">
                       <div className="flex items-start justify-between mb-4">
                         <div className="flex-1">
                           <h3 className="font-semibold text-lg mb-2">{program.title}</h3>
@@ -725,7 +640,7 @@ export default function CompanyDashboard() {
                       
                       <div className="flex items-center justify-between pt-4 border-t">
                         <div className="text-sm text-muted-foreground">
-                          <p>Applications: {applications.filter(a => a.programId === program.$id).length}</p>
+                          <p>Applications: {applications.filter(a => a.programId === program.id).length}</p>
                           <p>Deadline: {new Date(program.applicationDeadline).toLocaleDateString()}</p>
                         </div>
                         
@@ -739,7 +654,7 @@ export default function CompanyDashboard() {
                             Edit
                           </Button>
                           {program.status === 'draft' && (
-                            <Button  onClick={() => publishProgram(program.$id)}>
+                            <Button  onClick={() => publishProgram(program.id)}>
                               Publish
                             </Button>
                           )}
@@ -796,7 +711,7 @@ export default function CompanyDashboard() {
               <div className="space-y-4">
                 {filteredApplications.length > 0 ? (
                   filteredApplications.map((application) => (
-                    <div key={application.$id} className="p-4 border rounded-lg">
+                    <div key={application.id} className="p-4 border rounded-lg">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
                           <div className="flex items-center gap-3 mb-2">
@@ -879,20 +794,20 @@ export default function CompanyDashboard() {
                               <div className="flex gap-2">
                                 <Button 
                                    
-                                  onClick={() => updateApplicationStatus(application.$id, 'shortlisted')}
+                                  onClick={() => updateApplicationStatus(application.id, 'shortlisted')}
                                 >
                                   Shortlist
                                 </Button>
                                 <Button 
                                    
-                                  onClick={() => updateApplicationStatus(application.$id, 'selected')}
+                                  onClick={() => updateApplicationStatus(application.id, 'selected')}
                                 >
                                   Select
                                 </Button>
                                 <Button 
                                    
                                   variant="destructive"
-                                  onClick={() => updateApplicationStatus(application.$id, 'rejected')}
+                                  onClick={() => updateApplicationStatus(application.id, 'rejected')}
                                 >
                                   Reject
                                 </Button>
@@ -903,14 +818,14 @@ export default function CompanyDashboard() {
                               <div className="flex gap-2">
                                 <Button 
                                    
-                                  onClick={() => updateApplicationStatus(application.$id, 'selected')}
+                                  onClick={() => updateApplicationStatus(application.id, 'selected')}
                                 >
                                   Select
                                 </Button>
                                 <Button 
                                    
                                   variant="destructive"
-                                  onClick={() => updateApplicationStatus(application.$id, 'rejected')}
+                                  onClick={() => updateApplicationStatus(application.id, 'rejected')}
                                 >
                                   Reject
                                 </Button>

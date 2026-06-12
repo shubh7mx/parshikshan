@@ -63,19 +63,19 @@ function NotificationItem({
   const iconColor = getNotificationColor(notification.type);
 
   const handleClick = () => {
-    if (!notification.isRead) {
-      onMarkAsRead(notification.$id);
+    if (!notification.is_read) {
+      onMarkAsRead(notification.id);
     }
     
-    if (notification.actionUrl) {
-      window.location.href = notification.actionUrl;
+    if (notification.action_url) {
+      window.location.href = notification.action_url;
     }
   };
 
   return (
     <div 
       className={`p-4 border-b cursor-pointer hover:bg-muted/50 transition-colors ${
-        !notification.isRead ? 'bg-primary/5' : ''
+        !notification.is_read ? 'bg-primary/5' : ''
       }`}
       onClick={handleClick}
     >
@@ -85,23 +85,23 @@ function NotificationItem({
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
             <h4 className={`font-medium text-sm truncate ${
-              !notification.isRead ? 'text-foreground' : 'text-muted-foreground'
+              !notification.is_read ? 'text-foreground' : 'text-muted-foreground'
             }`}>
               {notification.title}
             </h4>
-            {!notification.isRead && (
+            {!notification.is_read && (
               <div className="w-2 h-2 bg-primary rounded-full flex-shrink-0 ml-2" />
             )}
           </div>
           
           <p className={`text-sm ${
-            !notification.isRead ? 'text-foreground' : 'text-muted-foreground'
+            !notification.is_read ? 'text-foreground' : 'text-muted-foreground'
           }`}>
             {notification.message}
           </p>
           
           <p className="text-xs text-muted-foreground mt-1">
-            {new Date(notification.$createdAt).toLocaleString()}
+            {new Date(notification.created_at).toLocaleString()}
           </p>
         </div>
         
@@ -111,10 +111,10 @@ function NotificationItem({
           className="h-6 w-6 p-0"
           onClick={(e) => {
             e.stopPropagation();
-            onMarkAsRead(notification.$id);
+            onMarkAsRead(notification.id);
           }}
         >
-          {notification.isRead ? (
+          {notification.is_read ? (
             <Check className="h-3 w-3" />
           ) : (
             <X className="h-3 w-3" />
@@ -132,9 +132,9 @@ export default function NotificationCenter({
 }: NotificationCenterProps) {
   const [isOpen, setIsOpen] = useState(false);
   
-  const unreadCount = notifications.filter(n => !n.isRead).length;
+  const unreadCount = notifications.filter(n => !n.is_read).length;
   const recentNotifications = notifications
-    .sort((a, b) => new Date(b.$createdAt).getTime() - new Date(a.$createdAt).getTime())
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
     .slice(0, 10);
 
   return (
@@ -182,7 +182,7 @@ export default function NotificationCenter({
             <div>
               {recentNotifications.map((notification) => (
                 <NotificationItem
-                  key={notification.$id}
+                  key={notification.id}
                   notification={notification}
                   onMarkAsRead={onMarkAsRead}
                 />
@@ -223,25 +223,25 @@ export function useNotifications() {
       // Mock data for now
       setNotifications([
         {
-          $id: '1',
-          userId: 'user1',
+          id: '1',
+          user_id: 'user1',
           title: 'Application Approved',
           message: 'Your internship application for Frontend Developer position has been approved.',
           type: 'success',
-          isRead: false,
-          actionUrl: '/student/applications/1',
-          $createdAt: new Date().toISOString(),
-          $updatedAt: new Date().toISOString(),
+          is_read: false,
+          action_url: '/student/applications/1',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
         },
         {
-          $id: '2',
-          userId: 'user1',
+          id: '2',
+          user_id: 'user1',
           title: 'Report Due Soon',
           message: 'Your weekly report is due in 2 days. Please submit it on time.',
           type: 'warning',
-          isRead: false,
-          $createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-          $updatedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          is_read: false,
+          created_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+          updated_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
         },
       ]);
     } catch (error) {
@@ -257,7 +257,7 @@ export function useNotifications() {
       // await dbOperations.markNotificationAsRead(notificationId);
       
       setNotifications(prev =>
-        prev.map(n => n.$id === notificationId ? { ...n, isRead: true } : n)
+        prev.map(n => n.id === notificationId ? { ...n, is_read: true } : n)
       );
     } catch (error) {
       console.error('Failed to mark notification as read:', error);
@@ -268,7 +268,7 @@ export function useNotifications() {
     try {
       // Replace with actual API call to mark all as read
       setNotifications(prev =>
-        prev.map(n => ({ ...n, isRead: true }))
+        prev.map(n => ({ ...n, is_read: true }))
       );
     } catch (error) {
       console.error('Failed to mark all notifications as read:', error);
