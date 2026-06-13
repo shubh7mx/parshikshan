@@ -129,22 +129,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const loginDemo = async (): Promise<{ success: boolean; error?: string }> => {
     try {
       setIsLoading(true);
+      const result = await callServerAction('demoLogin', {});
 
-      const demoUser: User = {
-        id: 'demo-user-student',
-        name: 'Demo Student',
-        email: 'demo@student.com',
-        role: 'student',
-        profile_image: '',
-        is_active: true,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      };
-
-      setUser(demoUser);
-      toast.success('Welcome to the demo! Exploring as a student.');
-      router.push('/dashboard');
-      return { success: true };
+      if (result.success && result.data) {
+        setUser(result.data);
+        toast.success('Welcome to the demo! Exploring as a student.');
+        router.push('/dashboard');
+        return { success: true };
+      }
+      return { success: false, error: 'Demo login failed.' };
     } catch (error: any) {
       return { success: false, error: error.message || 'Demo login failed.' };
     } finally {
